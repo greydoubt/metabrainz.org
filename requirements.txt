@@ -1,4 +1,4 @@
-Authlib==0.15.4
+Authlib==1.2.1
 certifi
 click==8.1.3
 email_validator==1.0.5
