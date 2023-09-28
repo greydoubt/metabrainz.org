@@ -6,6 +6,8 @@ from wtforms.fields.html5 import EmailField, URLField, DecimalField
 from wtforms.validators import DataRequired, Length
 from wtforms.widgets import ListWidget, CheckboxInput
 
+from metabrainz.user.forms import UserSignupForm
+
 
 class DatasetsField(SelectMultipleField):
     widget = ListWidget(prefix_label=False)
@@ -33,7 +35,7 @@ class DatasetsField(SelectMultipleField):
         self.data = [datasets_dict.get(x) for x in self.data]
 
 
-class SupporterSignUpForm(FlaskForm):
+class SupporterSignUpForm(UserSignupForm):
     """Base sign up form for new supporters.
 
     Contains common fields required from both commercial and non-commercial
