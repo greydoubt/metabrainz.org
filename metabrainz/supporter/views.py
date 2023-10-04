@@ -1,8 +1,9 @@
-import logging
+import json
 
-from flask import Blueprint, request, redirect, render_template, url_for, jsonify
+from flask import Blueprint, request, redirect, render_template, url_for, jsonify, current_app
 from flask_babel import gettext
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import login_user, login_required, current_user
+from flask_wtf.csrf import generate_csrf
 from werkzeug.exceptions import NotFound, BadRequest
 
 from metabrainz import flash
@@ -91,53 +92,66 @@ def signup_commercial():
     if form.validate_on_submit() and custom_validation(form):
         user = User.get(name=form.username.data)
         if user is not None:
-            form.form_errors.append(f"Another user with username '{form.username.data}' exists.")
-            return render_template("supporters/signup-commercial.html", form=form, tier=selected_tier)
+            form.username.errors.append(f"Another user with username '{form.username.data}' exists.")
+        else:
+            # TODO: Handle the case where multiple users sign up with same email but haven't verified it yet
+            user = User.get(email=form.email.data)
+            if user is not None:
+                form.email.errors.append(f"Another user with email '{form.email.data}' exists.")
+            else:
+                user = User.add(name=form.username.data, email=form.email.data, password=form.password.data)
 
-        # TODO: Handle the case where multiple users sign up with same email but haven"t verified it yet
-        user = User.get(email=form.email.data)
-        if user is not None:
-            form.form_errors.append(f"Another user with email '{form.email.data}' exists.")
-            return render_template("supporters/signup-commercial.html", form=form, tier=selected_tier)
+                new_supporter = Supporter.add(
+                    is_commercial=True,
+                    contact_name=form.contact_name.data,
+                    contact_email=form.contact_email.data,
+                    data_usage_desc=form.usage_desc.data,
 
-        user = User.add(name=form.username.data, email=form.email.data, password=form.password.data)
+                    org_name=form.org_name.data,
+                    org_desc=form.org_desc.data,
+                    website_url=form.website_url.data,
+                    org_logo_url=form.logo_url.data,
+                    api_url=form.api_url.data,
 
-        new_supporter = Supporter.add(
-            is_commercial=True,
-            contact_name=form.contact_name.data,
-            contact_email=form.contact_email.data,
-            data_usage_desc=form.usage_desc.data,
+                    address_street=form.address_street.data,
+                    address_city=form.address_city.data,
+                    address_state=form.address_state.data,
+                    address_postcode=form.address_postcode.data,
+                    address_country=form.address_country.data,
 
-            org_name=form.org_name.data,
-            org_desc=form.org_desc.data,
-            website_url=form.website_url.data,
-            org_logo_url=form.logo_url.data,
-            api_url=form.api_url.data,
+                    tier_id=tier_id,
+                    amount_pledged=form.amount_pledged.data,
+                    datasets=[],
+                    user=user
+                )
+                flash.success(gettext(
+                    "Thanks for signing up! Your application will be reviewed "
+                    "soon. We will send you updates via email."
+                ))
+                send_verification_email(
+                    user,
+                    "[MetaBrainz] Sign up confirmation",
+                    "email/supporter-commercial-welcome-email-address-verification.txt"
+                )
+                login_user(new_supporter)
+                return redirect(url_for('.profile'))
 
-            address_street=form.address_street.data,
-            address_city=form.address_city.data,
-            address_state=form.address_state.data,
-            address_postcode=form.address_postcode.data,
-            address_country=form.address_country.data,
+    form_errors = {k: ". ".join(v) for k, v in form.errors.items()}
+    form_data = dict(**form.data)
+    if form_data["amount_pledged"]:
+        form_data["amount_pledged"] = float(form_data["amount_pledged"])
+    form_data.pop("csrf_token", None)
 
-            tier_id=tier_id,
-            amount_pledged=form.amount_pledged.data,
-            datasets=[],
-            user=user
-        )
-        flash.success(gettext(
-            "Thanks for signing up! Your application will be reviewed "
-            "soon. We will send you updates via email."
-        ))
-        send_verification_email(
-            user,
-            "[MetaBrainz] Sign up confirmation",
-            "email/supporter-commercial-welcome-email-address-verification.txt"
-        )
-        login_user(new_supporter)
-        return redirect(url_for('.profile'))
-
-    return render_template("supporters/signup-commercial.html", form=form, tier=selected_tier)
+    return render_template("supporters/signup-commercial.html", props=json.dumps({
+        "tier": {
+            "name": selected_tier.name,
+            "price": float(selected_tier.price)
+        },
+        "recaptcha_site_key": current_app.config["RECAPTCHA_PUBLIC_KEY"],
+        "csrf_token": generate_csrf(),
+        "initial_form_data": form_data,
+        "initial_errors": form_errors
+    }))
 
 
 @supporters_bp.route('/signup/noncommercial', methods=('GET', 'POST'))
@@ -150,35 +164,43 @@ def signup_noncommercial():
     if form.validate_on_submit():
         user = User.get(name=form.username.data)
         if user is not None:
-            form.form_errors.append(f"Another user with username '{form.username.data}' exists.")
-            return render_template("supporters/signup-non-commercial.html", form=form)
+            form.username.errors.append(f"Another user with username '{form.username.data}' exists.")
+        else:
+            # TODO: Handle the case where multiple users sign up with same email but haven"t verified it yet
+            user = User.get(email=form.email.data)
+            if user is not None:
+                form.email.errors.append(f"Another user with email '{form.email.data}' exists.")
+            else:
+                user = User.add(name=form.username.data, email=form.email.data, password=form.password.data)
+                supporter = Supporter.add(
+                    is_commercial=False,
+                    contact_name=form.contact_name.data,
+                    contact_email=form.contact_email.data,
+                    data_usage_desc=form.usage_desc.data,
+                    datasets=form.datasets.data,
+                    user=user
+                )
+                send_verification_email(
+                    user,
+                    "[MetaBrainz] Sign up confirmation",
+                    "email/supporter-noncommercial-welcome-email-address-verification.txt"
+                )
+                flash.success(gettext("Thanks for signing up! Please check your inbox to complete verification."))
 
-        # TODO: Handle the case where multiple users sign up with same email but haven"t verified it yet
-        user = User.get(email=form.email.data)
-        if user is not None:
-            form.form_errors.append(f"Another user with email '{form.email.data}' exists.")
-            return render_template("supporters/signup-non-commercial.html", form=form)
+                login_user(user)
+                return redirect(url_for('.profile'))
 
-        user = User.add(name=form.username.data, email=form.email.data, password=form.password.data)
-        supporter = Supporter.add(
-            is_commercial=False,
-            contact_name=form.contact_name.data,
-            contact_email=form.contact_email.data,
-            data_usage_desc=form.usage_desc.data,
-            datasets=form.datasets.data,
-            user=user
-        )
-        send_verification_email(
-            user,
-            "[MetaBrainz] Sign up confirmation",
-            "email/supporter-noncommercial-welcome-email-address-verification.txt"
-        )
-        flash.success(gettext("Thanks for signing up! Please check your inbox to complete verification."))
+    form_errors = {k: ". ".join(v) for k, v in form.errors.items()}
+    form_data = dict(**form.data)
+    form_data.pop("csrf_token", None)
 
-        login_user(user)
-        return redirect(url_for('.profile'))
-
-    return render_template("supporters/signup-non-commercial.html", form=form)
+    return render_template("supporters/signup-non-commercial.html", props=json.dumps({
+        "datasets": [{"id": d.id, "description": d.description, "name": d.name} for d in available_datasets],
+        "recaptcha_site_key": current_app.config["RECAPTCHA_PUBLIC_KEY"],
+        "csrf_token": generate_csrf(),
+        "initial_form_data": form_data,
+        "initial_errors": form_errors
+    }))
 
 
 @supporters_bp.route('/supporters/profile')
@@ -191,6 +213,7 @@ def profile():
 @login_required
 def profile_edit():
     if current_user.is_commercial:
+        available_datasets = []
         form = CommercialSupporterEditForm()
     else:
         available_datasets = Dataset.query.all()
@@ -215,7 +238,17 @@ def profile_edit():
         if not current_user.is_commercial and current_user.datasets:
             form.datasets.data = [dataset.id for dataset in current_user.datasets]
 
-    return render_template('supporters/profile-edit.html', form=form)
+    form_errors = {k: ". ".join(v) for k, v in form.errors.items()}
+    form_data = dict(**form.data)
+    form_data.pop("csrf_token", None)
+
+    return render_template("supporters/profile-edit.html", props=json.dumps({
+        "datasets": [{"id": d.id, "description": d.description, "name": d.name} for d in available_datasets],
+        "is_commercial": current_user.is_commercial,
+        "csrf_token": generate_csrf(),
+        "initial_form_data": form_data,
+        "initial_errors": form_errors
+    }))
 
 
 @supporters_bp.route('/supporters/profile/regenerate-token', methods=['POST'])
