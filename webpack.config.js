@@ -49,6 +49,11 @@ module.exports = function (env, argv) {
       ],
       signupCommercial: path.resolve(jsDir, "src/forms/SignupCommercial.tsx"),
       signupNonCommercial: path.resolve(jsDir, "src/forms/SignupNonCommercial.tsx"),
+      signupUser: path.resolve(jsDir, "src/forms/SignupUser.tsx"),
+      loginUser: path.resolve(jsDir, "src/forms/LoginUser.tsx"),
+      lostPassword: path.resolve(jsDir, "src/forms/LostPassword.tsx"),
+      lostUsername: path.resolve(jsDir, "src/forms/LostUsername.tsx"),
+      resetPassword: path.resolve(jsDir, "src/forms/ResetPassword.tsx"),
       profileEdit: path.resolve(jsDir, "src/forms/ProfileEdit.tsx")
     },
     output: {
